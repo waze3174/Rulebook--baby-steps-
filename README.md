@@ -22,7 +22,9 @@ you can turn on a small tag in the bottom right that lists every rule that isn't
 
 body sizes are real, not just looks: the ragdoll, the visible body, how long his legs are for walking, his feet and the camera all change together. the game's walking only holds up from x0.5 to x1.15, so the parts that matter for walking (whole nate, torso, thighs, shins, feet, hips) stay in that range. head, arms and hands go further.
 
-with my other mod falltracker also installed, both pages open from one **MODS** button so the pause menu doesn't run off the screen.
+with my other mods falltracker or practicetools also installed, the pages open from one **MODS** button so the pause menu doesn't run off the screen.
+
+pressing F9 (flyandquicksave's save key) no longer empties every mod's pause menu page.
 
 ## multiplayer
 
