@@ -8,7 +8,7 @@ using MelonLoader;
 using UnityEngine;
 using UnityEngine.UI;
 
-[assembly: MelonInfo(typeof(Rulebook.Core), "Rulebook", "1.0.0", "waze3174")]
+[assembly: MelonInfo(typeof(Rulebook.Core), "Rulebook", "1.1.0", "waze3174")]
 [assembly: MelonGame]
 [assembly: MelonOptionalDependencies("BabyStepsMenuLib", "BabyStepsMultiplayerClient", "BabyStepsNetworking")]
 
@@ -21,7 +21,7 @@ public class Core : MelonMod
 {
     internal static Core Inst;
     internal static MelonPreferences_Category Cat;
-    internal static MelonPreferences_Entry<bool> ShowTag;
+    internal static MelonPreferences_Entry<bool> ShowTag, KeepItems, KeepHat;
 
     // one dial per rule
     internal class Dial
@@ -64,7 +64,7 @@ public class Core : MelonMod
         Balance = Add("BalanceTime", "Balance time", "BALANCE", "Falls", 1f, 0.2f, 10f, "How long you can stay off balance or squashed before you fall.");
         Landings = Add("HardLandings", "Hard landings", "LANDINGS", "Falls", 1f, 0.2f, 10f, "How hard a hit you can take to the hips.");
         Splits = Add("Splits", "Splits", "SPLITS", "Falls", 1f, 0.5f, 3f, "How far apart your feet can be before the splits drop you. Above 1 very squashed legs also drop you a bit sooner, below 1 a bit later.");
-        Gravity = Add("Gravity", "Gravity", "GRAVITY", "World", 1f, 0.05f, 5f, "Gravity for nate and the world.");
+        Gravity = Add("Gravity", "Gravity", "GRAVITY", "World", 1f, 0.05f, 5f, "Gravity for nate (standing, walking, lifting his feet, falling) and the world.");
         Fatigue = Add("Fatigue", "Fatigue", "FATIGUE", "World", 1f, 0f, 10f, "How fast legs tire. 0 = never.", percent: true);
         Wind = Add("Wind", "Wind", "WIND", "World", 0f, 0f, 50f, "Gusty wind pushing you around. 0 = none.");
         // body: each bone in both of nate's skeletons (ragdoll = physics, and the visible one); left and right together
@@ -78,7 +78,9 @@ public class Core : MelonMod
         Feet = Add("FeetSize", "Feet", "FEET", "Legs", 1f, 0.5f, 1.15f, "Nate's feet, and the sole he balances on. x0.5 to x1.15, the walking falls apart past that.");
         Whole = Add("NateSize", "Whole Nate", "SIZE", "Size", 1f, 0.5f, 1.15f, "All of nate at once, on top of the other body dials: legs, feet, his walking and the camera. The game's walking has distances built in, so he only plays from x0.5 to x1.15.");
         Hips = Add("HipSize", "Hips & butt", "HIPS", "Size", 1f, 0.5f, 1.15f, "Nate's pelvis with his butt and belly.");
-        ShowTag = Cat.CreateEntry("ShowTag", true, "Show tag", "List the rules that aren't normal in the bottom right corner.");
+        ShowTag = Cat.CreateEntry("ShowTag", false, "Show tag", "List the rules that aren't normal in the bottom right corner.");
+        KeepItems = Cat.CreateEntry("KeepItems", false, "Keep items", "Nate never drops what he holds when he falls or bumps his hands (swapping items still works).");
+        KeepHat = Cat.CreateEntry("KeepHat", false, "Keep hat", "Nate's hat never gets knocked off when he falls (changing hats still works).");
 
         // 0.1/0.2 had one "FallTolerance" dial for lean, balance and landings together
         var oldTol = Cat.CreateEntry("FallTolerance", 1f, "Fall tolerance (old)", "Replaced by LeanLimit, BalanceTime and HardLandings.", is_hidden: true);
@@ -111,6 +113,7 @@ public class Core : MelonMod
     internal static void ResetAll()
     {
         foreach (var d in Dials) d.Entry.Value = d.Normal;
+        KeepItems.Value = false; KeepHat.Value = false;
         Changed();
     }
 
@@ -142,7 +145,7 @@ public class Core : MelonMod
     // ---- limits, gravity, fatigue, wind: around nate's physics step ----
 
     static IntPtr tunedFor;
-    static float baseDeadAng, baseInstaDeadAng, baseOneLegDeadAng, baseHipCollidingDeadAng, baseOffBalanceTime, baseDeathTime, baseHipCollision, baseGrav;
+    static float baseDeadAng, baseInstaDeadAng, baseOneLegDeadAng, baseHipCollidingDeadAng, baseOffBalanceTime, baseDeathTime, baseHipCollision;
     static Vector3 baseWorldGravity; static bool haveWorldGravity; static float appliedWorldGravity = 1f;
     static readonly float[] fatigueBefore = new float[2];
 
@@ -191,8 +194,8 @@ public class Core : MelonMod
         tunedFor = pm.Pointer;
         baseDeadAng = pm.deadAngThresh; baseInstaDeadAng = pm.instaDeadAngThresh; baseOneLegDeadAng = pm.oneLegDeadAngThresh;
         baseHipCollidingDeadAng = pm.hipCollidingDeadAngThresh; baseOffBalanceTime = pm.offBalanceDeathTime;
-        baseDeathTime = pm.deathTime; baseHipCollision = pm.hipCollisionDeathThresh; baseGrav = pm.grav;
-        Inst.LoggerInstance.Msg($"nate's values: lean {baseDeadAng}/{baseInstaDeadAng}/{baseOneLegDeadAng} deg, off balance {baseOffBalanceTime} s, squash {baseDeathTime} s, hip hit {baseHipCollision}, gravity {baseGrav}");
+        baseDeathTime = pm.deathTime; baseHipCollision = pm.hipCollisionDeathThresh;
+        Inst.LoggerInstance.Msg($"nate's values: lean {baseDeadAng}/{baseInstaDeadAng}/{baseOneLegDeadAng} deg, off balance {baseOffBalanceTime} s, squash {baseDeathTime} s, hip hit {baseHipCollision}");
     }
 
     static void Tune(Il2Cpp.PlayerMovement pm)
@@ -205,7 +208,6 @@ public class Core : MelonMod
         pm.offBalanceDeathTime = baseOffBalanceTime * Balance.Value;
         pm.deathTime = baseDeathTime * Balance.Value;
         pm.hipCollisionDeathThresh = baseHipCollision * Landings.Value;
-        pm.grav = baseGrav * Gravity.Value;
 
         // the world's gravity (ragdoll, items) follows, touched only when the dial moves
         if (!Mathf.Approximately(appliedWorldGravity, Gravity.Value))
@@ -214,6 +216,54 @@ public class Core : MelonMod
             Physics.gravity = baseWorldGravity * Gravity.Value;
             appliedWorldGravity = Gravity.Value;
         }
+    }
+
+    // nate's own gravity: the game works it out every step (9.8, less in water) inside GetHipGravityAccel and keeps it in
+    // pm.grav, which his hip, lifted feet, push-offs and leg torque all use. scaling it here reaches all of them
+    // (setting pm.grav before the step did nothing: this overwrote it, so only the ragdoll felt the dial)
+    [HarmonyPatch(typeof(Il2Cpp.PlayerMovement), "GetHipGravityAccel")]
+    static class GravityPatch
+    {
+        static void Postfix(Il2Cpp.PlayerMovement __instance, ref Vector3 __result)
+        {
+            if (Gravity.IsNormal) return;
+            float g = Gravity.Value;
+            __instance.grav *= g;
+            __result *= g;
+        }
+    }
+
+    // ---- misc: keep items and hat ----
+    // the game drops what's in a hand when the hand hits something hard (BodyPartHit) or flails while nate is down
+    // (DeadUpdate), and knocks the hat off when his head jolts while down (DeadUpdate). the same drop / knock-off calls
+    // also swap items and hats on purpose, so only these two callers are blocked
+
+    static int inHit, inDown;
+
+    [HarmonyPatch(typeof(Il2Cpp.PlayerMovement), "BodyPartHit")]
+    static class HitPatch
+    {
+        static void Prefix() => inHit++;
+        static void Finalizer() => inHit--;
+    }
+
+    [HarmonyPatch(typeof(Il2Cpp.PlayerMovement), "DeadUpdate")]
+    static class DownPatch
+    {
+        static void Prefix() => inDown++;
+        static void Finalizer() => inDown--;
+    }
+
+    [HarmonyPatch(typeof(Il2Cpp.PlayerMovement), nameof(Il2Cpp.PlayerMovement.DropHandItem))]
+    static class DropPatch
+    {
+        static bool Prefix() => !(KeepItems.Value && (inHit > 0 || inDown > 0));
+    }
+
+    [HarmonyPatch(typeof(Il2Cpp.PlayerMovement), nameof(Il2Cpp.PlayerMovement.KnockOffHat))]
+    static class HatPatch
+    {
+        static bool Prefix() => !(KeepHat.Value && inDown > 0);
     }
 
     // angles grow toward lying flat, never past it
@@ -477,12 +527,15 @@ public class Core : MelonMod
         var m = Il2Cpp.Menu.me;
         bool changed = false;
         foreach (var d in Dials) if (!d.IsNormal) { changed = true; break; }
+        if (KeepItems.Value || KeepHat.Value) changed = true;
         bool show = ShowTag.Value && changed && Il2Cpp.PlayerMovement.me != null && m != null;
         if (!show) { if (tag != null) tag.gameObject.SetActive(false); return; }
         if (tag == null && !MakeTag(m)) return;
         tag.gameObject.SetActive(true);
         var sb = new System.Text.StringBuilder("RULEBOOK");
         foreach (var d in Dials) if (!d.IsNormal) sb.Append("  ").Append(d.Tag).Append(' ').Append(d.Show(d.Value));
+        if (KeepItems.Value) sb.Append("  KEEP ITEMS");
+        if (KeepHat.Value) sb.Append("  KEEP HAT");
         tag.text = sb.ToString();
     }
 

@@ -11,12 +11,12 @@ using UnityEngine.UI;
 namespace Rulebook;
 
 // the RULEBOOK page in the pause menu, built with BabyStepsMenuLib (optional: only touched when it's installed).
-// tabs: Falls, World, Arms, Legs, Size, Options (4 rows a page: more runs into the Close button). every slider says its normal value.
+// tabs: Falls, World, Arms, Legs, Size, Misc, Options (4 rows a page: more runs into the Close button). every slider says its normal value.
 // with FallTracker also installed, both pages open from one MODS button (MenuHub)
 static class RulebookMenu
 {
     static readonly List<(Slider slider, Core.Dial dial)> sliders = new();
-    static Toggle tagToggle;
+    static Toggle tagToggle, itemsToggle, hatToggle;
     static Button resetBtn;
 
     static bool built;   // our tabs are on the pause menu page (ours, or the shared one)
@@ -31,7 +31,7 @@ static class RulebookMenu
         {
             ("Falls", tab => Dials(tab, "Falls")), ("World", tab => Dials(tab, "World")),
             ("Arms", tab => Dials(tab, "Arms")), ("Legs", tab => Dials(tab, "Legs")),
-            ("Size", tab => Dials(tab, "Size")), ("Options", Options),
+            ("Size", tab => Dials(tab, "Size")), ("Misc", Misc), ("Options", Options),
         }, log, harmony);
     }
 
@@ -39,6 +39,15 @@ static class RulebookMenu
     {
         built = true;
         foreach (var d in Core.Dials) if (d.Tab == page) Row(tab, d);
+    }
+
+    static void Misc(MenuInjectionLibrary.TabBuilder tab)
+    {
+        built = true;
+        itemsToggle = tab.AddToggle("Never drop items", Core.KeepItems.Value, (UnityAction<bool>)(v => { Core.KeepItems.Value = v; Core.Changed(); }));
+        if (itemsToggle != null) Style(itemsToggle.GetComponentInChildren<TextMeshProUGUI>(true), Scale);
+        hatToggle = tab.AddToggle("Never lose the hat", Core.KeepHat.Value, (UnityAction<bool>)(v => { Core.KeepHat.Value = v; Core.Changed(); }));
+        if (hatToggle != null) Style(hatToggle.GetComponentInChildren<TextMeshProUGUI>(true), Scale);
     }
 
     static void Options(MenuInjectionLibrary.TabBuilder tab)
@@ -50,6 +59,8 @@ static class RulebookMenu
         {
             Core.ResetAll();
             foreach (var (s, d) in sliders) { if (s == null) continue; s.SetValueWithoutNotify(d.Entry.Value); Label(s, d); }
+            if (itemsToggle != null) itemsToggle.SetIsOnWithoutNotify(false);
+            if (hatToggle != null) hatToggle.SetIsOnWithoutNotify(false);
         }));
         if (reset != null) Style(reset.GetComponentInChildren<TextMeshProUGUI>(true), Scale);
     }
@@ -101,6 +112,8 @@ static class RulebookMenu
         var sel = es != null ? es.currentSelectedGameObject : null;
         foreach (var (s, _) in sliders) Highlight(LabelOf(s), s, sel);
         if (tagToggle != null) Highlight(tagToggle.GetComponentInChildren<TextMeshProUGUI>(true), tagToggle, sel);
+        if (itemsToggle != null) Highlight(itemsToggle.GetComponentInChildren<TextMeshProUGUI>(true), itemsToggle, sel);
+        if (hatToggle != null) Highlight(hatToggle.GetComponentInChildren<TextMeshProUGUI>(true), hatToggle, sel);
         if (resetBtn != null) Highlight(resetBtn.GetComponentInChildren<TextMeshProUGUI>(true), resetBtn, sel);
         foreach (var b in MenuHub.ChooserButtons)
             if (b != null) Highlight(b.GetComponentInChildren<TextMeshProUGUI>(true), b, sel);

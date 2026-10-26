@@ -1,6 +1,6 @@
 # Rulebook (baby steps)
 
-a melonloader mod for baby steps that lets you make your own rules. make the game easier, harder or just weird: grip, how much it takes to fall, gravity, fatigue, wind, and the size of nate and each part of him.
+a melonloader mod for baby steps that lets you make your own rules. make the game easier, harder or just weird: grip, how much it takes to fall, gravity, fatigue, wind, the size of nate and each part of him, and whether he drops his stuff.
 
 ## what it does
 
@@ -11,9 +11,14 @@ a **RULEBOOK** page in the pause menu (needs BabyStepsMenuLib, see install), eve
 - **arms**: head, upper arms, forearms, hands
 - **legs**: torso, thighs, shins, feet
 - **size**: whole nate, hips & butt
+- **misc**: never drop items, never lose the hat
 - **options**: show the rules on screen, reset everything to normal
 
-while anything isn't normal, a small tag in the bottom right lists it (you can turn it off).
+gravity changes everything about nate: standing, walking, lifting his feet and falling, plus the world around him.
+
+never drop items / never lose the hat stop him dropping what he holds and losing his hat when he falls or bumps his hands. swapping items and hats still works.
+
+you can turn on a small tag in the bottom right that lists every rule that isn't normal (options).
 
 body sizes are real, not just looks: the ragdoll, the visible body, how long his legs are for walking, his feet and the camera all change together. the game's walking only holds up from x0.5 to x1.15, so the parts that matter for walking (whole nate, torso, thighs, shins, feet, hips) stay in that range. head, arms and hands go further.
 
