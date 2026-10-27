@@ -8,7 +8,7 @@ using MelonLoader;
 using UnityEngine;
 using UnityEngine.UI;
 
-[assembly: MelonInfo(typeof(Rulebook.Core), "Rulebook", "1.1.1", "waze3174")]
+[assembly: MelonInfo(typeof(Rulebook.Core), "Rulebook", "1.1.2", "waze3174")]
 [assembly: MelonGame]
 [assembly: MelonOptionalDependencies("BabyStepsMenuLib", "BabyStepsMultiplayerClient", "BabyStepsNetworking")]
 
