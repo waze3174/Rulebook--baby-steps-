@@ -8,7 +8,7 @@ using MelonLoader;
 using UnityEngine;
 using UnityEngine.UI;
 
-[assembly: MelonInfo(typeof(Rulebook.Core), "Rulebook", "1.2.0", "waze3174")]
+[assembly: MelonInfo(typeof(Rulebook.Core), "Rulebook", "1.2.1", "waze3174")]
 [assembly: MelonGame]
 [assembly: MelonOptionalDependencies("BabyStepsMenuLib", "BabyStepsMultiplayerClient", "BabyStepsNetworking")]
 
@@ -585,7 +585,7 @@ public class Core : MelonMod
 
     // ---- the tag ----
     // the rules that aren't normal, listed down the left side of the screen: under PracticeTools' timer and splits
-    // when they show, above the game's input display when it shows. one column, two when that doesn't fit, then
+    // when they show, above the game's input display and WalkingCoach's panel when they show. one column, two when that doesn't fit, then
     // smaller text until it does
 
     TextMeshProUGUI[] cols;
@@ -714,7 +714,23 @@ public class Core : MelonMod
             for (int i = 0; i < 4; i++) topPx = Mathf.Max(topPx, RectTransformUtility.WorldToScreenPoint(uiCam, corners[i]).y);
             bottom = Mathf.Max(bottom, topPx / scale + Gap);
         }
+
+        // WalkingCoach's panel: text running up from its bottom left corner (its pivot)
+        if (coach == null && Time.unscaledTime >= nextCoachFind)
+        {
+            nextCoachFind = Time.unscaledTime + 2f;
+            coach = GameObject.Find("WalkingCoach")?.transform.Find("text");
+        }
+        if (coach != null && coach.gameObject.activeInHierarchy)
+        {
+            var t = coach.GetComponent<TMP_Text>();
+            if (t != null && t.text.Length > 0)
+                bottom = Mathf.Max(bottom, (coach.position.y + t.preferredHeight * coach.lossyScale.y) / scale + Gap);
+        }
     }
+
+    Transform coach;
+    float nextCoachFind;
 
     bool MakeTag(Il2Cpp.Menu m)
     {
