@@ -677,7 +677,6 @@ public class Core : MelonMod
     static readonly string[] HudTexts = { "timer", "steps", "splits" };
     Transform ptHud;
     float nextHudFind;
-    static Il2CppInterop.Runtime.InteropTypes.Arrays.Il2CppStructArray<Vector3> corners;
 
     void Limits()
     {
@@ -703,17 +702,11 @@ public class Core : MelonMod
         bottom = 30f;
         var cam = Camera.main;
         var g = cam != null ? cam.GetComponent<Il2Cpp.InputGraph>() : null;
-        var img = g != null && g.enabled ? g.rtImage : null;
-        if (img != null && img.gameObject.activeInHierarchy)
-        {
-            corners ??= new Il2CppInterop.Runtime.InteropTypes.Arrays.Il2CppStructArray<Vector3>(4);
-            img.rectTransform.GetWorldCorners(corners);
-            var cv = img.canvas;
-            Camera uiCam = cv != null && cv.renderMode != RenderMode.ScreenSpaceOverlay ? cv.worldCamera : null;
-            float topPx = 0f;
-            for (int i = 0; i < 4; i++) topPx = Mathf.Max(topPx, RectTransformUtility.WorldToScreenPoint(uiCam, corners[i]).y);
-            bottom = Mathf.Max(bottom, topPx / scale + Gap);
-        }
+        // the game draws it in front of the camera, 12 units of height across the screen: its circles reach 2 radii
+        // up from the bottom (the triggers' bars a bit more). in the bottom middle while WalkingCoach shows (it
+        // centres it), then it's out of the way
+        if (g != null && g.enabled && !CoachCentres())
+            bottom = Mathf.Max(bottom, 2.3f * g.circleRadius / 12f * canvasRt.rect.height + Gap);
 
         // WalkingCoach's panel: text running up from its bottom left corner (its pivot)
         if (coach == null && Time.unscaledTime >= nextCoachFind)
@@ -731,6 +724,21 @@ public class Core : MelonMod
 
     Transform coach;
     float nextCoachFind;
+
+    // WalkingCoach centres the input display while it shows (its static CentreGraph), found by reflection
+    static System.Reflection.FieldInfo coachCentre;
+    static bool coachLooked;
+
+    static bool CoachCentres()
+    {
+        if (!coachLooked)
+        {
+            coachLooked = true;
+            foreach (var a in AppDomain.CurrentDomain.GetAssemblies())
+                if (a.GetName().Name == "WalkingCoach") coachCentre = a.GetType("WalkingCoach.Core")?.GetField("CentreGraph", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public);
+        }
+        return coachCentre != null && coachCentre.GetValue(null) is true;
+    }
 
     bool MakeTag(Il2Cpp.Menu m)
     {
