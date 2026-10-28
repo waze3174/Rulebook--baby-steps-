@@ -11,7 +11,7 @@ using UnityEngine.UI;
 namespace Rulebook;
 
 // the RULEBOOK page in the pause menu, built with BabyStepsMenuLib (optional: only touched when it's installed).
-// tabs: Falls, World, Arms, Legs, Size, Misc, Options. every slider says its normal value.
+// tabs: Falls, World, Arms, Legs, Size, Misc (with the suit colour), Options. every slider says its normal value.
 // with my other mods installed (FallTracker, PracticeTools), all the pages open from one MODS button (MenuHub)
 static class RulebookMenu
 {
@@ -48,7 +48,12 @@ static class RulebookMenu
         if (itemsToggle != null) Style(itemsToggle.GetComponentInChildren<TextMeshProUGUI>(true), Scale);
         hatToggle = tab.AddToggle("Never lose the hat", Core.KeepHat.Value, (UnityAction<bool>)(v => { Core.KeepHat.Value = v; Core.Changed(); }));
         if (hatToggle != null) Style(hatToggle.GetComponentInChildren<TextMeshProUGUI>(true), Scale);
+        // the suit colour (red, green, blue), with a swatch under it
+        foreach (var d in Core.Dials) if (d.Tab == "Misc") Row(tab, d);
+        swatch = tab.AddImage(Core.SuitColor(), 30f);
     }
+
+    static Image swatch;
 
     static void Options(MenuInjectionLibrary.TabBuilder tab)
     {
@@ -124,6 +129,7 @@ static class RulebookMenu
         var es = UnityEngine.EventSystems.EventSystem.current;
         var sel = es != null ? es.currentSelectedGameObject : null;
         Color normal = MenuColor(false), selected = MenuColor(true);
+        if (swatch != null) { var c = Core.SuitColor(); if (swatch.color != c) swatch.color = c; }
         foreach (var (s, _) in sliders) Highlight(s, sel, normal, selected);
         Highlight(tagToggle, sel, normal, selected);
         Highlight(itemsToggle, sel, normal, selected);

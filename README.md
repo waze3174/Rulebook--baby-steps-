@@ -11,7 +11,7 @@ a **RULEBOOK** page in the pause menu (needs BabyStepsMenuLib, see install), eve
 - **arms**: head, upper arms, forearms, hands
 - **legs**: torso, thighs, shins, feet
 - **size**: whole nate, hips & butt
-- **misc**: never drop items, never lose the hat
+- **misc**: never drop items, never lose the hat, and your suit colour (red / green / blue with a swatch). the colour works in single player; on a multiplayer server the multiplayer mod's own colour takes over until you leave
 - **options**: show the rules on screen, reset everything to normal
 
 gravity changes everything about nate: standing, walking, lifting his feet and falling, plus the world around him.

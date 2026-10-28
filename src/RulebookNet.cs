@@ -30,6 +30,13 @@ static class RulebookNet
     static readonly Dictionary<byte, float[]> sizes = new();          // player uuid -> bone group scales
     static readonly Dictionary<IntPtr, float[]> applied = new();      // remote nate root -> what we last set on it (null = normal)
 
+    // connected to a server: the multiplayer mod colours nate then
+    internal static bool Online()
+    {
+        var nm = BabyStepsMultiplayerClient.Core.networkManager;
+        return nm != null && nm.IsConnected;
+    }
+
     internal static void Update()
     {
         var nm = BabyStepsMultiplayerClient.Core.networkManager;

@@ -8,7 +8,7 @@ using MelonLoader;
 using UnityEngine;
 using UnityEngine.UI;
 
-[assembly: MelonInfo(typeof(Rulebook.Core), "Rulebook", "1.1.3", "waze3174")]
+[assembly: MelonInfo(typeof(Rulebook.Core), "Rulebook", "1.2.0", "waze3174")]
 [assembly: MelonGame]
 [assembly: MelonOptionalDependencies("BabyStepsMenuLib", "BabyStepsMultiplayerClient", "BabyStepsNetworking")]
 
@@ -29,6 +29,7 @@ public class Core : MelonMod
         public string Key, Name, Tag, Tab, Note;
         public float Normal, Min, Max;
         public bool Percent;
+        public bool Look;   // looks, not a rule: left off the rules list
         public MelonPreferences_Entry<float> Entry;
         public float Value => Mathf.Clamp(Entry.Value, Min, Max);
         public bool IsNormal => Mathf.Abs(Entry.Value - Normal) < 0.001f;
@@ -36,7 +37,7 @@ public class Core : MelonMod
     }
 
     internal static readonly List<Dial> Dials = new();
-    internal static Dial Grip, Lean, Balance, Landings, Splits, Gravity, Fatigue, Wind, Head, UpperArms, Forearms, Hands, Torso, Thighs, Shins, Feet, Whole, Hips;
+    internal static Dial Grip, Lean, Balance, Landings, Splits, Gravity, Fatigue, Wind, Head, UpperArms, Forearms, Hands, Torso, Thighs, Shins, Feet, Whole, Hips, Red, Green, Blue;
 
     static Dial Add(string key, string name, string tag, string tab, float normal, float min, float max, string note, bool percent = false)
     {
@@ -78,6 +79,11 @@ public class Core : MelonMod
         Feet = Add("FeetSize", "Feet", "FEET", "Legs", 1f, 0.5f, 1.15f, "Nate's feet, and the sole he balances on. x0.5 to x1.15, the walking falls apart past that.");
         Whole = Add("NateSize", "Whole Nate", "SIZE", "Size", 1f, 0.5f, 1.15f, "All of nate at once, on top of the other body dials: legs, feet, his walking and the camera. The game's walking has distances built in, so he only plays from x0.5 to x1.15.");
         Hips = Add("HipSize", "Hips & butt", "HIPS", "Size", 1f, 0.5f, 1.15f, "Nate's pelvis with his butt and belly.");
+        // suit colour like the multiplayer mod's, offline too. all at 100% = the game's own suit
+        Red = Add("SuitRed", "Suit red", "RED", "Misc", 1f, 0f, 1f, "Red in nate's suit colour (multiplayer's own colour takes over while you're on a server).", percent: true);
+        Green = Add("SuitGreen", "Suit green", "GREEN", "Misc", 1f, 0f, 1f, "Green in nate's suit colour.", percent: true);
+        Blue = Add("SuitBlue", "Suit blue", "BLUE", "Misc", 1f, 0f, 1f, "Blue in nate's suit colour.", percent: true);
+        Red.Look = Green.Look = Blue.Look = true;
         ShowTag = Cat.CreateEntry("ShowTag", false, "Show tag", "List the rules that aren't normal down the left side of the screen.");
         KeepItems = Cat.CreateEntry("KeepItems", false, "Keep items", "Nate never drops what he holds when he falls or bumps his hands (swapping items still works).");
         KeepHat = Cat.CreateEntry("KeepHat", false, "Keep hat", "Nate's hat never gets knocked off when he falls (changing hats still works).");
@@ -526,6 +532,57 @@ public class Core : MelonMod
         return null;
     }
 
+    // ---- suit colour ----
+    // the same as the multiplayer mod's: the suit material's colour, set straight. that mod only colours nate while
+    // it's connected (and puts white back when it leaves), so while online this keeps its hands off; offline it's ours
+
+    internal static Color SuitColor() => new(Red.Value, Green.Value, Blue.Value, 1f);
+
+    static IntPtr suitFor;
+    static readonly List<(Material mat, Color was)> suits = new();
+    static bool suitTouched;
+
+    static void Suit()
+    {
+        var pm = Il2Cpp.PlayerMovement.me;
+        if (pm == null) return;
+        bool normal = Red.IsNormal && Green.IsNormal && Blue.IsNormal;
+        if (Online()) { suitTouched = false; return; }
+        if (normal && !suitTouched) return;
+        if (pm.Pointer != suitFor) FindSuits(pm);
+        var want = SuitColor();
+        foreach (var (mat, was) in suits)
+        {
+            if (mat == null) continue;
+            var c = normal ? was : want;
+            if (mat.color != c) mat.color = c;
+        }
+        suitTouched = !normal;
+    }
+
+    // the walking code's suit material, and the one on nate's mesh (the multiplayer mod sets both)
+    static void FindSuits(Il2Cpp.PlayerMovement pm)
+    {
+        suitFor = pm.Pointer;
+        suits.Clear();
+        void Keep(Material m) { if (m != null && !suits.Exists(x => x.mat.Pointer == m.Pointer)) suits.Add((m, m.color)); }
+        Keep(pm.suitMat);
+        var mesh = pm.transform.Find("IKTargets/HipTarget/NathanAnimIK_October2022/Nathan.001")?.GetComponent<SkinnedMeshRenderer>();
+        if (mesh != null)
+            foreach (var m in mesh.sharedMaterials)
+                if (m != null && m.name.Contains("NewSuit_Oct22")) Keep(m);
+        DebugLog.Write($"suit colour: {suits.Count} suit material{(suits.Count == 1 ? "" : "s")}");
+    }
+
+    static bool Online()
+    {
+        if (!netOk) return false;
+        try { return NetOnline(); }
+        catch (Exception e) when (e is FileNotFoundException || e is TypeLoadException || e is MissingMethodException || e is MissingFieldException) { netOk = false; return false; }
+    }
+
+    static bool NetOnline() => RulebookNet.Online();
+
     // ---- the tag ----
     // the rules that aren't normal, listed down the left side of the screen: under PracticeTools' timer and splits
     // when they show, above the game's input display when it shows. one column, two when that doesn't fit, then
@@ -542,6 +599,7 @@ public class Core : MelonMod
     public override void OnUpdate()
     {
         try { Tag(); } catch (Exception e) { Once("tag", e); }
+        try { Suit(); } catch (Exception e) { Once("suit colour", e); }
         if (menuOk) try { MenuHighlight(); } catch (Exception e) { menuOk = false; LoggerInstance.Error("menu: " + e); }
         if (netOk) try { NetUpdate(); }
             catch (Exception e) when (e is FileNotFoundException || e is TypeLoadException || e is MissingMethodException || e is MissingFieldException) { netOk = false; }
@@ -559,7 +617,7 @@ public class Core : MelonMod
     {
         var m = Il2Cpp.Menu.me;
         bool changed = false;
-        foreach (var d in Dials) if (!d.IsNormal) { changed = true; break; }
+        foreach (var d in Dials) if (!d.IsNormal && !d.Look) { changed = true; break; }
         if (KeepItems.Value || KeepHat.Value) changed = true;
         bool show = ShowTag.Value && changed && Il2Cpp.PlayerMovement.me != null && m != null;
         if (!show) { if (cols != null) foreach (var c in cols) c.gameObject.SetActive(false); return; }
@@ -567,7 +625,7 @@ public class Core : MelonMod
 
         lines.Clear();
         lines.Add("RULEBOOK");
-        foreach (var d in Dials) if (!d.IsNormal) lines.Add(d.Tag + " " + d.Show(d.Value));
+        foreach (var d in Dials) if (!d.IsNormal && !d.Look) lines.Add(d.Tag + " " + d.Show(d.Value));
         if (KeepItems.Value) lines.Add("KEEP ITEMS");
         if (KeepHat.Value) lines.Add("KEEP HAT");
         if (Time.unscaledTime >= nextLimits) { nextLimits = Time.unscaledTime + 0.25f; Limits(); }
