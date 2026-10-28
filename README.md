@@ -18,7 +18,7 @@ gravity changes everything about nate: standing, walking, lifting his feet and f
 
 never drop items / never lose the hat stop him dropping what he holds and losing his hat when he falls or bumps his hands. swapping items and hats still works.
 
-you can turn on a small tag in the bottom right that lists every rule that isn't normal (options).
+you can turn on a list of every rule that isn't normal (options). it sits down the left side of the screen, under practicetools' timer and splits and above the input display, in two columns and smaller text when there are a lot.
 
 body sizes are real, not just looks: the ragdoll, the visible body, how long his legs are for walking, his feet and the camera all change together. the game's walking only holds up from x0.5 to x1.15, so the parts that matter for walking (whole nate, torso, thighs, shins, feet, hips) stay in that range. head, arms and hands go further.
 

@@ -16,7 +16,7 @@ namespace Rulebook;
 
 // your own rules for baby steps: grip, how much it takes to fall, the splits, gravity, fatigue, wind, and the size of each part of nate.
 // set from the pause menu (with BabyStepsMenuLib) or UserData/Rulebook/Rulebook.cfg; every dial at its normal value = the normal game.
-// while anything isn't normal, a small tag in the bottom right lists it (can be turned off)
+// while anything isn't normal, a list down the left side of the screen shows it (can be turned off)
 public class Core : MelonMod
 {
     internal static Core Inst;
@@ -78,7 +78,7 @@ public class Core : MelonMod
         Feet = Add("FeetSize", "Feet", "FEET", "Legs", 1f, 0.5f, 1.15f, "Nate's feet, and the sole he balances on. x0.5 to x1.15, the walking falls apart past that.");
         Whole = Add("NateSize", "Whole Nate", "SIZE", "Size", 1f, 0.5f, 1.15f, "All of nate at once, on top of the other body dials: legs, feet, his walking and the camera. The game's walking has distances built in, so he only plays from x0.5 to x1.15.");
         Hips = Add("HipSize", "Hips & butt", "HIPS", "Size", 1f, 0.5f, 1.15f, "Nate's pelvis with his butt and belly.");
-        ShowTag = Cat.CreateEntry("ShowTag", false, "Show tag", "List the rules that aren't normal in the bottom right corner.");
+        ShowTag = Cat.CreateEntry("ShowTag", false, "Show tag", "List the rules that aren't normal down the left side of the screen.");
         KeepItems = Cat.CreateEntry("KeepItems", false, "Keep items", "Nate never drops what he holds when he falls or bumps his hands (swapping items still works).");
         KeepHat = Cat.CreateEntry("KeepHat", false, "Keep hat", "Nate's hat never gets knocked off when he falls (changing hats still works).");
 
@@ -527,10 +527,17 @@ public class Core : MelonMod
     }
 
     // ---- the tag ----
+    // the rules that aren't normal, listed down the left side of the screen: under PracticeTools' timer and splits
+    // when they show, above the game's input display when it shows. one column, two when that doesn't fit, then
+    // smaller text until it does
 
-    TextMeshProUGUI tag;
-    string tagText;
+    TextMeshProUGUI[] cols;
+    RectTransform canvasRt;
+    readonly List<string> lines = new();
     readonly System.Text.StringBuilder sb = new();
+    string laidOut;
+    float top = 20f, bottom = 30f, nextLimits;
+    const float BaseSize = 22f, MinSize = 10f, Gap = 16f, Left = 30f, ColGap = 28f;
 
     public override void OnUpdate()
     {
@@ -555,16 +562,100 @@ public class Core : MelonMod
         foreach (var d in Dials) if (!d.IsNormal) { changed = true; break; }
         if (KeepItems.Value || KeepHat.Value) changed = true;
         bool show = ShowTag.Value && changed && Il2Cpp.PlayerMovement.me != null && m != null;
-        if (!show) { if (tag != null) tag.gameObject.SetActive(false); return; }
-        if (tag == null && !MakeTag(m)) return;
-        tag.gameObject.SetActive(true);
-        sb.Clear().Append("RULEBOOK");
-        foreach (var d in Dials) if (!d.IsNormal) sb.Append("  ").Append(d.Tag).Append(' ').Append(d.Show(d.Value));
-        if (KeepItems.Value) sb.Append("  KEEP ITEMS");
-        if (KeepHat.Value) sb.Append("  KEEP HAT");
-        // tmp rebuilds its mesh on every new text: only when it changed
-        string text = sb.ToString();
-        if (text != tagText) tag.text = tagText = text;
+        if (!show) { if (cols != null) foreach (var c in cols) c.gameObject.SetActive(false); return; }
+        if (cols == null && !MakeTag(m)) return;
+
+        lines.Clear();
+        lines.Add("RULEBOOK");
+        foreach (var d in Dials) if (!d.IsNormal) lines.Add(d.Tag + " " + d.Show(d.Value));
+        if (KeepItems.Value) lines.Add("KEEP ITEMS");
+        if (KeepHat.Value) lines.Add("KEEP HAT");
+        if (Time.unscaledTime >= nextLimits) { nextLimits = Time.unscaledTime + 0.25f; Limits(); }
+
+        // laid out again only when the rules or the room changed
+        sb.Clear();
+        foreach (var l in lines) sb.Append(l).Append('\n');
+        sb.Append((int)top).Append('|').Append((int)bottom).Append('|').Append((int)canvasRt.rect.height);
+        string key = sb.ToString();
+        cols[0].gameObject.SetActive(true);
+        if (key == laidOut) return;
+        laidOut = key;
+        Layout(Mathf.Max(60f, canvasRt.rect.height - top - bottom));
+    }
+
+    void Layout(float room)
+    {
+        float size = BaseSize;
+        string a = string.Join("\n", lines), b = null;
+        float h = Height(cols[0], a, size);
+        if (h > room && lines.Count > 1)
+        {
+            int half = (lines.Count + 1) / 2;
+            a = string.Join("\n", lines.GetRange(0, half));
+            b = string.Join("\n", lines.GetRange(half, lines.Count - half));
+            h = Height(cols[0], a, size);
+        }
+        if (h > room) size = Mathf.Max(MinSize, size * room / h);
+        Place(cols[0], a, size, Left);
+        cols[1].gameObject.SetActive(b != null);
+        if (b != null) Place(cols[1], b, size, Left + cols[0].GetPreferredValues(a).x + ColGap * size / BaseSize);
+    }
+
+    static float Height(TMP_Text t, string s, float size)
+    {
+        t.fontSize = size;
+        return t.GetPreferredValues(s).y;
+    }
+
+    void Place(TextMeshProUGUI t, string s, float size, float x)
+    {
+        t.fontSize = size;
+        if (t.text != s) t.text = s;
+        t.rectTransform.anchoredPosition = new Vector2(x, -top);
+    }
+
+    // ---- the room on the left: canvas units from the top and from the bottom ----
+
+    static readonly string[] HudTexts = { "timer", "steps", "splits" };
+    Transform ptHud;
+    float nextHudFind;
+    static Il2CppInterop.Runtime.InteropTypes.Arrays.Il2CppStructArray<Vector3> corners;
+
+    void Limits()
+    {
+        float scale = canvasRt.localScale.y > 0f ? canvasRt.localScale.y : 1f;
+        top = 20f;
+        if (ptHud == null && Time.unscaledTime >= nextHudFind)
+        {
+            nextHudFind = Time.unscaledTime + 2f;
+            ptHud = GameObject.Find("PracticeTools hud")?.transform;
+        }
+        if (ptHud != null)
+            foreach (var n in HudTexts)
+            {
+                var c = ptHud.Find(n);
+                if (c == null || !c.gameObject.activeInHierarchy) continue;
+                var t = c.GetComponent<TMP_Text>();
+                if (t == null) continue;
+                // its text runs down from its top left corner (its pivot), on an overlay canvas: screen pixels
+                float bottomPx = c.position.y - t.preferredHeight * c.lossyScale.y;
+                top = Mathf.Max(top, (Screen.height - bottomPx) / scale + Gap);
+            }
+
+        bottom = 30f;
+        var cam = Camera.main;
+        var g = cam != null ? cam.GetComponent<Il2Cpp.InputGraph>() : null;
+        var img = g != null && g.enabled ? g.rtImage : null;
+        if (img != null && img.gameObject.activeInHierarchy)
+        {
+            corners ??= new Il2CppInterop.Runtime.InteropTypes.Arrays.Il2CppStructArray<Vector3>(4);
+            img.rectTransform.GetWorldCorners(corners);
+            var cv = img.canvas;
+            Camera uiCam = cv != null && cv.renderMode != RenderMode.ScreenSpaceOverlay ? cv.worldCamera : null;
+            float topPx = 0f;
+            for (int i = 0; i < 4; i++) topPx = Mathf.Max(topPx, RectTransformUtility.WorldToScreenPoint(uiCam, corners[i]).y);
+            bottom = Mathf.Max(bottom, topPx / scale + Gap);
+        }
     }
 
     bool MakeTag(Il2Cpp.Menu m)
@@ -579,20 +670,25 @@ public class Core : MelonMod
         scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
         scaler.referenceResolution = new Vector2(1920, 1080);
         scaler.matchWidthOrHeight = 1f;
-        var t = new GameObject("text");
-        t.transform.SetParent(go.transform, false);
-        tag = t.AddComponent<TextMeshProUGUI>();
-        tagText = null;
-        if (src != null) { tag.font = src.font; tag.fontSharedMaterial = src.fontSharedMaterial; }
-        tag.fontSize = 22;
-        tag.color = new Color(1f, 0.85f, 0.4f, 0.8f);
-        tag.alignment = TextAlignmentOptions.BottomRight;
-        tag.enableWordWrapping = false;
-        tag.raycastTarget = false;
-        var rt = tag.rectTransform;
-        rt.anchorMin = rt.anchorMax = rt.pivot = new Vector2(1f, 0f);
-        rt.anchoredPosition = new Vector2(-30f, 30f);
-        rt.sizeDelta = new Vector2(1400f, 40f);
+        canvasRt = go.GetComponent<RectTransform>();
+        cols = new TextMeshProUGUI[2];
+        for (int i = 0; i < 2; i++)
+        {
+            var t = new GameObject("column " + (i + 1));
+            t.transform.SetParent(go.transform, false);
+            var c = cols[i] = t.AddComponent<TextMeshProUGUI>();
+            if (src != null) { c.font = src.font; c.fontSharedMaterial = src.fontSharedMaterial; }
+            c.fontSize = BaseSize;
+            c.color = new Color(1f, 0.85f, 0.4f, 0.8f);
+            c.alignment = TextAlignmentOptions.TopLeft;
+            c.enableWordWrapping = false;
+            c.raycastTarget = false;
+            var rt = c.rectTransform;
+            rt.anchorMin = rt.anchorMax = rt.pivot = new Vector2(0f, 1f);
+            rt.sizeDelta = new Vector2(700f, 1000f);
+            t.SetActive(false);
+        }
+        laidOut = null;
         return true;
     }
 }
