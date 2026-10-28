@@ -11,8 +11,8 @@ using UnityEngine.UI;
 namespace Rulebook;
 
 // the RULEBOOK page in the pause menu, built with BabyStepsMenuLib (optional: only touched when it's installed).
-// tabs: Falls, World, Arms, Legs, Size, Misc, Options (4 rows a page: more runs into the Close button). every slider says its normal value.
-// with FallTracker also installed, both pages open from one MODS button (MenuHub)
+// tabs: Falls, World, Arms, Legs, Size, Misc, Options. every slider says its normal value.
+// with my other mods installed (FallTracker, PracticeTools), all the pages open from one MODS button (MenuHub)
 static class RulebookMenu
 {
     static readonly List<(Slider slider, Core.Dial dial)> sliders = new();
@@ -103,29 +103,44 @@ static class RulebookMenu
     static TextMeshProUGUI LabelOf(Slider s) =>
         s == null || s.transform.parent == null ? null : s.transform.parent.GetComponentInChildren<TextMeshProUGUI>(true);
 
+    // each control's text (a slider's label), looked up once
+    static readonly Dictionary<int, TextMeshProUGUI> texts = new();
+
+    static TextMeshProUGUI TextOf(Selectable s)
+    {
+        int id = s.GetInstanceID();
+        if (!texts.TryGetValue(id, out var t) || t == null)
+            texts[id] = t = s is Slider sl ? LabelOf(sl) : s.GetComponentInChildren<TextMeshProUGUI>(true);
+        return t;
+    }
+
     // the game shows which menu item is selected through the item's own highlight; the library's copies
     // don't have one, so the selected row's label turns white and underlined like a selected menu button
     internal static void Update()
     {
         if (!built && MenuHub.ChooserButtons.Count == 0) return;
+        var m = Il2Cpp.Menu.me;
+        if (m == null || !m.paused) return;
         var es = UnityEngine.EventSystems.EventSystem.current;
         var sel = es != null ? es.currentSelectedGameObject : null;
-        foreach (var (s, _) in sliders) Highlight(LabelOf(s), s, sel);
-        if (tagToggle != null) Highlight(tagToggle.GetComponentInChildren<TextMeshProUGUI>(true), tagToggle, sel);
-        if (itemsToggle != null) Highlight(itemsToggle.GetComponentInChildren<TextMeshProUGUI>(true), itemsToggle, sel);
-        if (hatToggle != null) Highlight(hatToggle.GetComponentInChildren<TextMeshProUGUI>(true), hatToggle, sel);
-        if (resetBtn != null) Highlight(resetBtn.GetComponentInChildren<TextMeshProUGUI>(true), resetBtn, sel);
-        foreach (var b in MenuHub.ChooserButtons)
-            if (b != null) Highlight(b.GetComponentInChildren<TextMeshProUGUI>(true), b, sel);
+        Color normal = MenuColor(false), selected = MenuColor(true);
+        foreach (var (s, _) in sliders) Highlight(s, sel, normal, selected);
+        Highlight(tagToggle, sel, normal, selected);
+        Highlight(itemsToggle, sel, normal, selected);
+        Highlight(hatToggle, sel, normal, selected);
+        Highlight(resetBtn, sel, normal, selected);
+        foreach (var b in MenuHub.ChooserButtons) Highlight(b, sel, normal, selected);
     }
 
     static readonly Dictionary<int, FontStyles> baseStyle = new();
 
-    static void Highlight(TextMeshProUGUI t, Selectable s, GameObject sel)
+    static void Highlight(Selectable s, GameObject sel, Color normal, Color selected)
     {
-        if (t == null || s == null || !s.gameObject.activeInHierarchy) return;
+        if (s == null || !s.gameObject.activeInHierarchy) return;
+        var t = TextOf(s);
+        if (t == null) return;
         bool on = sel != null && sel == s.gameObject;
-        t.color = MenuColor(on);
+        t.color = on ? selected : normal;
         // keep the text's own style (the game's buttons are bold caps), only add the underline
         int id = t.GetInstanceID();
         if (!baseStyle.TryGetValue(id, out var st)) { st = t.fontStyle & ~FontStyles.Underline; baseStyle[id] = st; }

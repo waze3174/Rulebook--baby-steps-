@@ -8,7 +8,7 @@ using MelonLoader;
 using UnityEngine;
 using UnityEngine.UI;
 
-[assembly: MelonInfo(typeof(Rulebook.Core), "Rulebook", "1.1.2", "waze3174")]
+[assembly: MelonInfo(typeof(Rulebook.Core), "Rulebook", "1.1.3", "waze3174")]
 [assembly: MelonGame]
 [assembly: MelonOptionalDependencies("BabyStepsMenuLib", "BabyStepsMultiplayerClient", "BabyStepsNetworking")]
 
@@ -101,7 +101,7 @@ public class Core : MelonMod
 
     public override void OnLateInitializeMelon()
     {
-        // after every mod has started: one page for all of waze3174's mods, the library's hooks added only if nobody did
+        // after every mod has started: one page for all my mods, the library's hooks added only if nobody did
         if (!menuOk) { LoggerInstance.Msg("BabyStepsMenuLib not installed: settings only in UserData/Rulebook/Rulebook.cfg"); return; }
         try { BuildMenu(); }
         catch (Exception e) when (e is FileNotFoundException || e is TypeLoadException || e is MissingMethodException)
@@ -109,6 +109,13 @@ public class Core : MelonMod
     }
 
     internal static void Changed() => Cat.SaveToFile(false);
+
+    // an error that comes back every frame or step goes in the log once
+    static readonly HashSet<string> told = new();
+    static void Once(string what, Exception e)
+    {
+        if (told.Add(what)) Inst.LoggerInstance.Error($"{what}: {e}");
+    }
 
     internal static void ResetAll()
     {
@@ -163,7 +170,7 @@ public class Core : MelonMod
                 var f = pm.feet;
                 for (int i = 0; i < 2 && f != null && i < f.Length; i++) fatigueBefore[i] = f[i] != null ? f[i].fatigue : 0f;
             }
-            catch (Exception e) { Inst.LoggerInstance.Error("step: " + e.Message); }
+            catch (Exception e) { Once("step", e); }
         }
 
         static void Postfix(Il2Cpp.PlayerMovement __instance)
@@ -184,7 +191,7 @@ public class Core : MelonMod
                 }
                 if (Wind.Value > 0f && !pm.dead) pm.hipVel += WindNow() * Time.fixedDeltaTime;
             }
-            catch (Exception e) { Inst.LoggerInstance.Error("step: " + e.Message); }
+            catch (Exception e) { Once("step after", e); }
         }
     }
 
@@ -195,7 +202,7 @@ public class Core : MelonMod
         baseDeadAng = pm.deadAngThresh; baseInstaDeadAng = pm.instaDeadAngThresh; baseOneLegDeadAng = pm.oneLegDeadAngThresh;
         baseHipCollidingDeadAng = pm.hipCollidingDeadAngThresh; baseOffBalanceTime = pm.offBalanceDeathTime;
         baseDeathTime = pm.deathTime; baseHipCollision = pm.hipCollisionDeathThresh;
-        Inst.LoggerInstance.Msg($"nate's values: lean {baseDeadAng}/{baseInstaDeadAng}/{baseOneLegDeadAng} deg, off balance {baseOffBalanceTime} s, squash {baseDeathTime} s, hip hit {baseHipCollision}");
+        DebugLog.Write($"nate's values: lean {baseDeadAng}/{baseInstaDeadAng}/{baseOneLegDeadAng} deg, off balance {baseOffBalanceTime} s, squash {baseDeathTime} s, hip hit {baseHipCollision}");
     }
 
     static void Tune(Il2Cpp.PlayerMovement pm)
@@ -280,9 +287,9 @@ public class Core : MelonMod
 
     // ---- body sizes ----
     // nate has three skeletons with the same bone names: the ragdoll under PuppetMaster (rigidbodies, colliders,
-    // joints), the visible one the mesh follows, and a hidden posed copy the game paints mud on. each dial scales its bone in both; bones under it keep their
-    // own size (their local scale is divided by what's above), so a longer torso pushes the head out without
-    // growing it. thighs and shins also set the leg length the walking uses (thigh + shin, 0.425 + 0.364 m),
+    // joints), the visible one the mesh follows, and a hidden posed copy the game paints mud on. each dial scales its
+    // bone in all three; bones under it keep their own size (their local scale is divided by what's above), so a
+    // longer torso pushes the head out without growing it. thighs and shins also set the leg length the walking uses (thigh + shin, 0.425 + 0.364 m),
     // feet the sole size it balances on
 
     static readonly (string name, Func<Dial> dial)[] BodyBones =
@@ -305,10 +312,9 @@ public class Core : MelonMod
     static float baseLegLength, baseThigh, baseShin; static Vector3 baseFootSize;
 
     // the walking's own size settings, scaled with the legs (the camera with all of nate). the game also has
-    // distances written into its code (a lifted leg never under 0.57 m, 5 cm balance margins...), which is why
-    // the legs stop at x0.75
-    // measured walking at each size (2026-10-23): the game's hip height has fixed distances in it, so a bigger nate
-    // stands on over-stretched legs and loses the ground, a smaller one squats; he plays from about x0.5 to x1.15
+    // distances written into its code (a lifted leg never under 0.57 m, 5 cm balance margins, its hip height...), so
+    // a bigger nate stands on over-stretched legs and loses the ground and a smaller one squats. i measured him
+    // walking at each size: he plays from about x0.5 to x1.15
     const float MinLeg = 0.5f, MaxLeg = 1.15f;
     // a bigger nate under the same gravity: lengths x size, speeds x sqrt(size), spring / turning strengths (they
     // turn metres or degrees of error into acceleration) x 1/size, so he moves like a scaled nate instead of
@@ -339,8 +345,9 @@ public class Core : MelonMod
         {
             if (curLeg > 0.01f && Mathf.Abs(curLeg - 1f) > 0.001f) __result /= curLeg;
         }
-    }    // thighs and shins raised together so the whole leg stays at MinLeg or more
+    }
 
+    // thighs and shins raised together so the whole leg stays between MinLeg and MaxLeg
     static float LegScale()
     {
         float raw = Whole.Value * (baseThigh * Thighs.Value + baseShin * Shins.Value) / (baseThigh + baseShin);
@@ -356,13 +363,14 @@ public class Core : MelonMod
     }
     static float Get(Il2Cpp.PlayerMovement pm, string name) => (float)Prop(name).GetValue(pm);
     static void Set(Il2Cpp.PlayerMovement pm, string name, float v) => Prop(name).SetValue(pm, v);
-    static string appliedRagdoll = "";
+    static readonly float[] appliedRagdoll = new float[10];
+    static bool ragdollApplied;
     static bool bodyTouched, visibleTouched;
 
     static void FindRigs(Il2Cpp.PlayerMovement pm)
     {
         bodyFor = pm.Pointer;
-        ragdoll = null; looks.Clear(); appliedRagdoll = "";
+        ragdoll = null; looks.Clear(); ragdollApplied = false;
         var root = pm.transform.root;
         Transform ragRoot = null;
         foreach (var t in root.GetComponentsInChildren<Transform>(true))
@@ -386,7 +394,7 @@ public class Core : MelonMod
             var shin = Find(ragRoot, "leg_stretch.l"); var foot = Find(ragRoot, "foot.l");
             if (shin != null && foot != null) { baseThigh = shin.localPosition.magnitude; baseShin = foot.localPosition.magnitude; }
         }
-        Inst.LoggerInstance.Msg($"body: ragdoll {ragdoll?.bones.Count ?? 0} bones, {looks.Count} other skeletons ({string.Join(", ", looks.ConvertAll(r => r.bones.Count + " bones"))}), leg {baseLegLength:F3} m (thigh {baseThigh:F3} + shin {baseShin:F3})");
+        DebugLog.Write($"body: ragdoll {ragdoll?.bones.Count ?? 0} bones, {looks.Count} other skeletons ({string.Join(", ", looks.ConvertAll(r => r.bones.Count + " bones"))}), leg {baseLegLength:F3} m (thigh {baseThigh:F3} + shin {baseShin:F3})");
     }
 
     // the bones we scale, parents first
@@ -401,10 +409,13 @@ public class Core : MelonMod
     }
 
     // each bone ends up at its dial's size whatever the bones above it are at
+    static readonly Dictionary<IntPtr, float> rigWant = new();
+
     static void ApplyRig(Rig rig)
     {
         if (rig == null) return;
-        var want = new Dictionary<IntPtr, float>();
+        var want = rigWant;
+        want.Clear();
         foreach (var (t, d) in rig.bones)
         {
             float above = 1f;
@@ -460,7 +471,21 @@ public class Core : MelonMod
         }
     }
 
-    static string BodyKey() => $"{Whole.Value}|{Hips.Value}|{Head.Value}|{UpperArms.Value}|{Forearms.Value}|{Hands.Value}|{Torso.Value}|{Thighs.Value}|{Shins.Value}|{Feet.Value}";
+    static Dial[] bodyDials;   // made on first use: the dials don't exist before OnInitializeMelon
+
+    // true when a body dial moved since the ragdoll was last sized
+    static bool BodyMoved()
+    {
+        bodyDials ??= new[] { Whole, Hips, Head, UpperArms, Forearms, Hands, Torso, Thighs, Shins, Feet };
+        bool moved = !ragdollApplied;
+        for (int i = 0; i < bodyDials.Length; i++)
+        {
+            float v = bodyDials[i].Value;
+            if (v != appliedRagdoll[i]) { appliedRagdoll[i] = v; moved = true; }
+        }
+        ragdollApplied = true;
+        return moved;
+    }
 
     // physics side, before nate's step: ragdoll bones (only when a dial moved), leg length, sole size
     static void BodyStep(Il2Cpp.PlayerMovement pm)
@@ -470,8 +495,7 @@ public class Core : MelonMod
         if (pm.Pointer != bodyFor) FindRigs(pm);
         float leg = LegScale();
         curLeg = leg;
-        string key = BodyKey();
-        if (key != appliedRagdoll) { ApplyRig(ragdoll); appliedRagdoll = key; }
+        if (BodyMoved()) ApplyRig(ragdoll);
         pm.legLength = baseLegLength * leg;
         pm.footSize = baseFootSize * Mathf.Max(Feet.Value * Whole.Value, MinLeg);
         foreach (var n in LegLengths) Set(pm, n, baseTuning[n] * leg);
@@ -484,7 +508,7 @@ public class Core : MelonMod
 
     public override void OnLateUpdate()
     {
-        if (menuOk) try { HubLateUpdate(); } catch (Exception e) { LoggerInstance.Error("menu: " + e.Message); }
+        if (menuOk) try { HubLateUpdate(); } catch (Exception e) { Once("menu", e); }
         // looks side, after animation: the visible bones
         try
         {
@@ -493,7 +517,7 @@ public class Core : MelonMod
             foreach (var r in looks) ApplyRig(r);
             visibleTouched = !normal;
         }
-        catch (Exception e) { LoggerInstance.Error("body: " + e.Message); looks.Clear(); }
+        catch (Exception e) { Once("body", e); looks.Clear(); }
     }
 
     static Transform Find(Transform under, string name)
@@ -505,14 +529,16 @@ public class Core : MelonMod
     // ---- the tag ----
 
     TextMeshProUGUI tag;
+    string tagText;
+    readonly System.Text.StringBuilder sb = new();
 
     public override void OnUpdate()
     {
-        try { Tag(); } catch (Exception e) { LoggerInstance.Error("tag: " + e.Message); }
-        if (menuOk) try { MenuHighlight(); } catch (Exception e) { menuOk = false; LoggerInstance.Error("menu: " + e.Message); }
+        try { Tag(); } catch (Exception e) { Once("tag", e); }
+        if (menuOk) try { MenuHighlight(); } catch (Exception e) { menuOk = false; LoggerInstance.Error("menu: " + e); }
         if (netOk) try { NetUpdate(); }
             catch (Exception e) when (e is FileNotFoundException || e is TypeLoadException || e is MissingMethodException || e is MissingFieldException) { netOk = false; }
-            catch (Exception e) { netOk = false; LoggerInstance.Error("multiplayer sizes: " + e.Message); }
+            catch (Exception e) { netOk = false; LoggerInstance.Error("multiplayer sizes: " + e); }
     }
 
     static bool menuOk;   // the RULEBOOK page exists (BabyStepsMenuLib installed)
@@ -532,11 +558,13 @@ public class Core : MelonMod
         if (!show) { if (tag != null) tag.gameObject.SetActive(false); return; }
         if (tag == null && !MakeTag(m)) return;
         tag.gameObject.SetActive(true);
-        var sb = new System.Text.StringBuilder("RULEBOOK");
+        sb.Clear().Append("RULEBOOK");
         foreach (var d in Dials) if (!d.IsNormal) sb.Append("  ").Append(d.Tag).Append(' ').Append(d.Show(d.Value));
         if (KeepItems.Value) sb.Append("  KEEP ITEMS");
         if (KeepHat.Value) sb.Append("  KEEP HAT");
-        tag.text = sb.ToString();
+        // tmp rebuilds its mesh on every new text: only when it changed
+        string text = sb.ToString();
+        if (text != tagText) tag.text = tagText = text;
     }
 
     bool MakeTag(Il2Cpp.Menu m)
@@ -554,6 +582,7 @@ public class Core : MelonMod
         var t = new GameObject("text");
         t.transform.SetParent(go.transform, false);
         tag = t.AddComponent<TextMeshProUGUI>();
+        tagText = null;
         if (src != null) { tag.font = src.font; tag.fontSharedMaterial = src.fontSharedMaterial; }
         tag.fontSize = 22;
         tag.color = new Color(1f, 0.85f, 0.4f, 0.8f);

@@ -25,10 +25,10 @@ static class RulebookNet
     static IModChannel channel;
     static FieldInfo clientField;
     static float nextSend;
-    static string lastSent = "";
+    static float[] lastSent;
     static readonly ConcurrentQueue<(byte uuid, float[] scales)> inbox = new();
     static readonly Dictionary<byte, float[]> sizes = new();          // player uuid -> bone group scales
-    static readonly Dictionary<IntPtr, string> applied = new();       // remote nate root -> what we last set on it
+    static readonly Dictionary<IntPtr, float[]> applied = new();      // remote nate root -> what we last set on it (null = normal)
 
     internal static void Update()
     {
@@ -39,7 +39,7 @@ static class RulebookNet
         if (c != client)
         {
             // a new connection: its own opcode table, so a new channel
-            client = c; channel = null; lastSent = ""; sizes.Clear();
+            client = c; channel = null; lastSent = null; sizes.Clear();
             if (client != null)
             {
                 channel = client.CreateModChannel(ModId);
@@ -50,15 +50,22 @@ static class RulebookNet
 
         // send ours when it changes, and now and then for players who joined after
         var mine = Core.BoneScales();
-        string key = string.Join("|", mine);
-        if (key != lastSent || Time.unscaledTime >= nextSend)
+        if (!Same(mine, lastSent) || Time.unscaledTime >= nextSend)
         {
             channel.Send(Write(mine), PacketDelivery.Reliable);
-            lastSent = key; nextSend = Time.unscaledTime + ResendEvery;
+            lastSent = mine; nextSend = Time.unscaledTime + ResendEvery;
         }
 
         while (inbox.TryDequeue(out var msg)) sizes[msg.uuid] = msg.scales;
         foreach (var kv in nm.players) Apply(kv.Key, kv.Value);
+    }
+
+    static bool Same(float[] a, float[] b)
+    {
+        if (a == null || b == null) return a == b;
+        if (a.Length != b.Length) return false;
+        for (int i = 0; i < a.Length; i++) if (a[i] != b[i]) return false;
+        return true;
     }
 
     static byte[] Write(float[] scales)
@@ -89,10 +96,10 @@ static class RulebookNet
         if (bones == null || bones.Count == 0 || bones[0] == null) return;
         var id = bones[0].Pointer;
         float[] s = sizes.TryGetValue(uuid, out var got) ? got : null;
-        string key = s == null ? "" : string.Join("|", s);
-        if (applied.TryGetValue(id, out var was) && was == key) return;
-        if (s == null && !applied.ContainsKey(id)) return;   // never touched, nothing to undo
-        applied[id] = key;
+        bool had = applied.TryGetValue(id, out var was);
+        if (had && Same(was, s)) return;
+        if (s == null && !had) return;   // never touched, nothing to undo
+        applied[id] = s;
         Core.ScaleBones(bones, s);
     }
 }
